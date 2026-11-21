@@ -30,9 +30,10 @@ React-фронтенд с одного домена.
 1. Создайте бесплатный проект на [supabase.com](https://supabase.com).
 2. Зайдите в **Project Settings → Database → Connection string → URI**
    и скопируйте строку вида
-   `postgresql://postgres.[ref]:[PASSWORD]@aws-0-eu-central-1.pooler.supabase.com:6543/postgres`.
+   `postgresql://postgres.[ref]:[PASSWORD]@aws-1-eu-west-1.pooler.supabase.com:6543/postgres`.
    Вместо `[PASSWORD]` подставьте пароль базы (он задаётся при создании
-   проекта). Возьмите именно **Transaction pooler** (порт 6543).
+   проекта). Возьмите именно **Transaction pooler** (порт 6543), а не
+   Direct connection (порт 5432) — прямой хост может быть недоступен с Fly.
 3. Эту строку нужно будет добавить на Fly.io как `DATABASE_URL`.
 
 Строка подключения включает пароль — не коммитьте её в репозиторий.
@@ -49,10 +50,16 @@ React-фронтенд с одного домена.
    ```bash
    flyctl auth login --token <токен>
    flyctl secrets set \
-     DATABASE_URL="postgresql://..." \
+     DATABASE_URL="postgresql://postgres.<ref>:<password>@aws-1-eu-west-1.pooler.supabase.com:6543/postgres?sslmode=require" \
      SESSION_SECRET="<длинная случайная строка>" \
      SUPABASE_URL="https://<project-ref>.supabase.co" \
-     SUPABASE_PUBLISHABLE_KEY="sb_publishable_..."
+     SUPABASE_PUBLISHABLE_KEY="sb_publishable_..." \
+     NODE_TLS_REJECT_UNAUTHORIZED=0
+
+   # Специальные символы в пароле нужно кодировать: @ -> %40, # -> %23 и т.д.
+   # NODE_TLS_REJECT_UNAUTHORIZED=0 нужен, потому что сертификат пулера
+   # Supabase не проходит проверку в Node.js; он отключает проверку TLS
+   # только внутри контейнера приложения.
    flyctl deploy
    ```
 
@@ -88,6 +95,7 @@ Publishable key для фронтенда больше не встраивает
 | `SESSION_SECRET` | да | Шифрование ключей провайдеров. Не меняйте после сохранения ключей. |
 | `SUPABASE_URL` | да | Project URL Supabase (`https://<ref>.supabase.co`). |
 | `SUPABASE_PUBLISHABLE_KEY` | да | Publishable key Supabase (`sb_publishable_...`). |
+| `NODE_TLS_REJECT_UNAUTHORIZED` | да (Supabase) | `0` — отключает проверку TLS-сертификата пулера Supabase внутри контейнера. |
 | `PORT` | да | Fly.io задаёт сам (8080). Локально — `5000`. |
 | `SERVE_WEB` | нет | `false` отключает раздачу фронтенда из API-сервиса. |
 | `WEB_DIST_DIR` | нет | Путь к собранному фронтенду, если он лежит нестандартно. |
