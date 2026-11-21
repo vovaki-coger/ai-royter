@@ -24,6 +24,7 @@ if (typeof localStorage !== 'undefined') {
 }
 
 type RuntimeConfig = {
+  authDisabled?: boolean;
   supabaseUrl?: string;
   supabasePublishableKey?: string;
 };
@@ -72,6 +73,11 @@ function AuthProvider({ config, children }: { config: RuntimeConfig; children: R
   });
 
   useEffect(() => {
+    if (config.authDisabled) {
+      setUser({ id: 'local', email: 'local@router' });
+      setLoading(false);
+      return;
+    }
     if (!accessToken) {
       setUser(null);
       setLoading(false);
@@ -102,6 +108,7 @@ function AuthProvider({ config, children }: { config: RuntimeConfig; children: R
   }, [accessToken, config.supabaseUrl, config.supabasePublishableKey]);
 
   const signIn = async (email: string, password: string) => {
+    if (config.authDisabled) return;
     const response = await fetch(`${config.supabaseUrl}/auth/v1/token?grant_type=password`, {
       method: 'POST',
       headers: { ...authHeaders(), 'Content-Type': 'application/json' },
@@ -115,6 +122,7 @@ function AuthProvider({ config, children }: { config: RuntimeConfig; children: R
   };
 
   const signUp = async (email: string, password: string) => {
+    if (config.authDisabled) return;
     const response = await fetch(`${config.supabaseUrl}/auth/v1/signup`, {
       method: 'POST',
       headers: { ...authHeaders(), 'Content-Type': 'application/json' },
@@ -131,6 +139,7 @@ function AuthProvider({ config, children }: { config: RuntimeConfig; children: R
   };
 
   const signOut = async () => {
+    if (config.authDisabled) return;
     try {
       await fetch(`${config.supabaseUrl}/auth/v1/logout`, {
         method: 'POST',
@@ -661,7 +670,7 @@ function LoadingConfig() {
 
 function App() {
   const config = useRuntimeConfig();
-  const ready = config !== null && Boolean(config.supabaseUrl && config.supabasePublishableKey);
+  const ready = config !== null && (config.authDisabled === true || Boolean(config.supabaseUrl && config.supabasePublishableKey));
   return <QueryClientProvider client={queryClient}><WouterRouter base={basePath}>{config === null ? <LoadingConfig /> : ready ? <AuthProvider config={config as RuntimeConfig}><AppRoutes /></AuthProvider> : <MissingAuthConfig />}</WouterRouter></QueryClientProvider>;
 }
 

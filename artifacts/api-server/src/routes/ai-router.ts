@@ -70,6 +70,12 @@ const router: IRouter = Router();
 // Supabase Auth: verify the user's access token by asking the Supabase Auth
 // API who owns it. No secret key is needed for this read-only check.
 const authenticated: RequestHandler = async (req, res, next) => {
+  if (process.env.DISABLE_AUTH === "true") {
+    res.locals.userId = process.env.SINGLE_USER_ID ?? "local";
+    next();
+    return;
+  }
+
   const match = (req.get("authorization") ?? "").match(/^Bearer\s+(.+)$/i);
   const token = match?.[1];
   const supabaseUrl = process.env.SUPABASE_URL;

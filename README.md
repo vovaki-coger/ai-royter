@@ -87,6 +87,19 @@ Publishable key для фронтенда больше не встраивает
    Если включено подтверждение email, после регистрации нужно подтвердить
    письмо и затем войти.
 
+### Без авторизации
+
+Если вход не нужен (личный инстанс), задай `DISABLE_AUTH=true`. Тогда дашборд
+открывается сразу, без регистрации и Supabase Auth. Все данные будут
+принадлежать одному виртуальному пользователю (`SINGLE_USER_ID`, по умолчанию
+`local`). ⚠️ Любой, кто знает URL, получит полный доступ — используй только
+для приватного развёртывания.
+
+```bash
+flyctl secrets set DISABLE_AUTH=true
+flyctl machine restart <id>
+```
+
 ### Переменные окружения
 
 | Переменная | Обязательна | Назначение |
@@ -96,6 +109,8 @@ Publishable key для фронтенда больше не встраивает
 | `SUPABASE_URL` | да | Project URL Supabase (`https://<ref>.supabase.co`). |
 | `SUPABASE_PUBLISHABLE_KEY` | да | Publishable key Supabase (`sb_publishable_...`). |
 | `NODE_TLS_REJECT_UNAUTHORIZED` | да (Supabase) | `0` — отключает проверку TLS-сертификата пулера Supabase внутри контейнера. |
+| `DISABLE_AUTH` | нет | `true` — полностью отключает вход: дашборд открывается сразу, без Supabase Auth. |
+| `SINGLE_USER_ID` | нет | ID «пользователя» при `DISABLE_AUTH=true` (по умолчанию `local`). |
 | `PORT` | да | Fly.io задаёт сам (8080). Локально — `5000`. |
 | `SERVE_WEB` | нет | `false` отключает раздачу фронтенда из API-сервиса. |
 | `WEB_DIST_DIR` | нет | Путь к собранному фронтенду, если он лежит нестандартно. |

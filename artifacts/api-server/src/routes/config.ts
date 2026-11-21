@@ -6,6 +6,7 @@ const router: IRouter = Router();
 // expose: they are publishable keys / URLs, never secret keys.
 router.get("/config", (_req, res) => {
   res.json({
+    authDisabled: process.env.DISABLE_AUTH === "true",
     authProvider: "supabase",
     supabaseUrl: process.env.SUPABASE_URL ?? "",
     supabasePublishableKey: process.env.SUPABASE_PUBLISHABLE_KEY ?? "",
