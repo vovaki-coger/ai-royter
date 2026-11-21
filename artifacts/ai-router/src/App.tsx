@@ -109,10 +109,11 @@ function AuthProvider({ config, children }: { config: RuntimeConfig; children: R
 
   const signIn = async (email: string, password: string) => {
     if (config.authDisabled) return;
+    const loginEmail = email.includes('@') ? email : `${email}@router.local`;
     const response = await fetch(`${config.supabaseUrl}/auth/v1/token?grant_type=password`, {
       method: 'POST',
       headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email: loginEmail, password }),
     });
     if (!response.ok) throw new Error('Неверный email или пароль');
     const data = await response.json() as { access_token: string; user: AuthUser };
@@ -123,10 +124,11 @@ function AuthProvider({ config, children }: { config: RuntimeConfig; children: R
 
   const signUp = async (email: string, password: string) => {
     if (config.authDisabled) return;
+    const loginEmail = email.includes('@') ? email : `${email}@router.local`;
     const response = await fetch(`${config.supabaseUrl}/auth/v1/signup`, {
       method: 'POST',
       headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email: loginEmail, password }),
     });
     if (!response.ok) throw new Error('Не удалось создать аккаунт');
     const data = await response.json() as { access_token?: string; user?: AuthUser };
