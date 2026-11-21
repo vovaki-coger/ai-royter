@@ -21,8 +21,9 @@ import NotFound from '@/pages/not-found';
 
 const queryClient = new QueryClient();
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
-function resolveClerkPublishableKey(): string {
-  const key = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
+
+function normalizeClerkKey(key: string): string {
   if (!key) return '';
   try {
     return publishableKeyFromHost(window.location.hostname, key);
@@ -30,8 +31,35 @@ function resolveClerkPublishableKey(): string {
     return key;
   }
 }
-const clerkPubKey = resolveClerkPublishableKey();
-const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
+
+const buildTimeClerkKey = normalizeClerkKey(
+  import.meta.env.VITE_CLERK_PUBLISHABLE_KEY ?? '',
+);
+
+function useClerkPublishableKey(): string | null {
+  const [key, setKey] = useState<string | null>(
+    () => buildTimeClerkKey || null,
+  );
+  useEffect(() => {
+    if (key !== null) return;
+    let cancelled = false;
+    fetch(`${basePath}/api/config`)
+      .then((response) => {
+        if (!response.ok) throw new Error('config unavailable');
+        return response.json() as Promise<{ clerkPublishableKey?: string }>;
+      })
+      .then((config) => {
+        if (!cancelled) setKey(normalizeClerkKey(config.clerkPublishableKey ?? ''));
+      })
+      .catch(() => {
+        if (!cancelled) setKey('');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [key]);
+  return key;
+}
 
 function stripBase(path: string) {
   return basePath && path.startsWith(basePath) ? path.slice(basePath.length) || '/' : path;
@@ -119,7 +147,7 @@ function MissingClerkConfig() {
   </main>;
 }
 
-function ClerkProviderWithRoutes() {
+function ClerkProviderWithRoutes({ clerkPubKey }: { clerkPubKey: string }) {
   const [, setLocation] = useLocation();
   if (!clerkPubKey) return <MissingClerkConfig />;
   return <ClerkProvider
@@ -570,8 +598,13 @@ function PlaygroundPage() {
   </main>;
 }
 
+function LoadingConfig() {
+  return <div className="min-h-screen flex items-center justify-center bg-[#fbfaf4] text-sm text-[#526156]">Loading…</div>;
+}
+
 function App() {
-  return <QueryClientProvider client={queryClient}><WouterRouter base={basePath}><ClerkProviderWithRoutes /></WouterRouter></QueryClientProvider>;
+  const clerkPubKey = useClerkPublishableKey();
+  return <QueryClientProvider client={queryClient}><WouterRouter base={basePath}>{clerkPubKey === null ? <LoadingConfig /> : <ClerkProviderWithRoutes clerkPubKey={clerkPubKey} />}</WouterRouter></QueryClientProvider>;
 }
 
 export default App;

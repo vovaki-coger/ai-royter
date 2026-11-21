@@ -14,73 +14,87 @@ OpenAI-совместимых запросов через собственные
 - показывать историю запросов и статистику;
 - шифровать ключи провайдеров на сервере (AES-256-GCM, `SESSION_SECRET`).
 
-## Деплой на Render
+## Деплой: Koyeb (веб) + Supabase (PostgreSQL)
 
-В репозитории уже есть `render.yaml`: Render создаст PostgreSQL и один
-Node-сервис, который отдаёт и API, и собранный React-фронтенд с одного
-домена. Отдельный static site не нужен.
+Supabase используется как бесплатная PostgreSQL. Сам Node/Express-сервис
+размещается на Koyeb (бесплатный инстанс во Франкфурте, вне РФ, нормально
+доступен из РФ и держит длинные streaming-ответы). Один сервис отдаёт и API,
+и собранный React-фронтенд с одного домена.
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/vovaki-coger/ai-royter)
+[![Deploy to Koyeb](https://www.koyeb.com/static/images/deploy/button.svg)](https://app.koyeb.com/deploy?type=git&builder=buildpack&repository=github.com/vovaki-coger/ai-royter&branch=main&name=ai-router&region=fra&instance_type=free&ports=8080;http;/&env[NODE_ENV]=production&env[PORT]=8080&env[SERVE_WEB]=true&env[LOG_LEVEL]=info&build_command=npm%20install%20-g%20pnpm%4010.34.9%20%26%26%20pnpm%20install%20--frozen-lockfile%20%26%26%20pnpm%20run%20build%3Arender&run_command=node%20artifacts%2Fapi-server%2Fdist%2Findex.mjs)
 
-1. Откройте Render Dashboard → **New** → **Blueprint** и подключите
-   репозиторий `vovaki-coger/ai-royter`.
-2. Render попросит заполнить переменные без значений:
-   - `CLERK_PUBLISHABLE_KEY` — publishable key из Clerk;
-   - `CLERK_SECRET_KEY` — secret key из Clerk (только сервер).
+### 1. Supabase
 
-   Blueprint сам передаёт publishable key в сборку фронтенда как
-   `VITE_CLERK_PUBLISHABLE_KEY`, поэтому вводить его дважды не нужно.
-3. Нажмите **Apply**. Render создаст базу, соберёт проект и запустит
-   сервис. Миграции БД применяются автоматически при старте.
-4. После первого деплоя откройте URL вида
-   `https://ai-router-xxxx.onrender.com` и проверьте `/api/healthz`.
+1. Создайте бесплатный проект на [supabase.com](https://supabase.com).
+2. Зайдите в **Project Settings → Database → Connection string → URI**
+   и скопируйте строку вида
+   `postgresql://postgres.[ref]:[PASSWORD]@aws-0-eu-central-1.pooler.supabase.com:6543/postgres`.
+   Вместо `[PASSWORD]` подставьте пароль базы (он задаётся при создании
+   проекта). Для Koyeb лучше взять именно **Transaction pooler** (порт 6543).
+3. Эту строку нужно будет добавить в Koyeb как `DATABASE_URL`.
+
+Строка подключения включает пароль — не коммитьте её в репозиторий.
+
+### 2. Koyeb
+
+1. Нажмите кнопку деплоя выше. Koyeb попросит войти/зарегистрироваться.
+   Бесплатный инстанс `free` во Франкфурте ничего не стоит; при регистрации
+   Koyeb может запросить карту для подтверждения, но списаний по free-тарифу нет.
+2. Кнопка уже заполнила репозиторий, ветку, регион `fra`, порт `8080`,
+   команды сборки и запуска. Нажмите **Deploy**.
+3. После первого деплоя откройте **Service → Settings → Environment variables**
+   и добавьте секреты:
+   - `DATABASE_URL` — строка из Supabase;
+   - `SESSION_SECRET` — длинная случайная строка (не меняйте её потом, иначе
+     сохранённые ключи провайдеров станут нечитаемыми);
+   - `CLERK_PUBLISHABLE_KEY` и `CLERK_SECRET_KEY` — из вашего приложения Clerk.
+4. Нажмите **Redeploy**. Миграции БД применятся автоматически при старте.
+5. Проверьте `https://<service>.<region>.koyeb.app/api/healthz`.
+
+Publishable key для фронтенда больше не встраивается при сборке: API отдаёт его
+через публичный `GET /api/config`, поэтому после смены Clerk-ключей достаточно
+обычного redeploy без очистки build-кэша.
 
 ### Clerk
 
-1. Создайте приложение на [dashboard.clerk.com](https://dashboard.clerk.com).
-2. Скопируйте **Publishable key** и **Secret key**.
-3. Добавьте домен Render (`https://<service>.onrender.com`) в разрешённые
-   домены/origins приложения Clerk.
-4. Если позже меняете `VITE_CLERK_PUBLISHABLE_KEY`, сделайте
-   **Manual Deploy → Clear build cache & deploy**: Vite встраивает
-   переменную на этапе сборки.
-
-Приложение также умеет работать через Clerk proxy
-(`/api/__clerk`). Для этого задайте `VITE_CLERK_PROXY_URL=/api/__clerk`
-при сборке и настройте proxy URL в Clerk Dashboard. По умолчанию proxy
-выключен, и браузер обращается к Clerk напрямую.
+1. Откройте ваше приложение на [dashboard.clerk.com](https://dashboard.clerk.com)
+   и скопируйте **Publishable key** и **Secret key**.
+2. Добавьте домен Koyeb (`https://<service>.fra.koyeb.app`) в разрешённые
+   origins/domains приложения Clerk.
+3. Приложение также умеет работать через Clerk proxy (`/api/__clerk`).
+   Для этого задайте `VITE_CLERK_PROXY_URL=/api/__clerk` при сборке и
+   настройте proxy URL в Clerk Dashboard. По умолчанию proxy выключен.
 
 ### Переменные окружения
 
 | Переменная | Обязательна | Назначение |
 | --- | --- | --- |
-| `DATABASE_URL` | да | PostgreSQL. Render подставляет из Blueprint. |
-| `SESSION_SECRET` | да | Шифрование ключей провайдеров. Render генерирует автоматически. Не меняйте после сохранения ключей. |
-| `CLERK_PUBLISHABLE_KEY` | да | Clerk publishable key для API. |
+| `DATABASE_URL` | да | PostgreSQL из Supabase (Transaction pooler, порт 6543). |
+| `SESSION_SECRET` | да | Шифрование ключей провайдеров. Не меняйте после сохранения ключей. |
+| `CLERK_PUBLISHABLE_KEY` | да | Clerk publishable key для API и для фронтенда (через `/api/config`). |
 | `CLERK_SECRET_KEY` | да | Clerk secret key. |
-| `VITE_CLERK_PUBLISHABLE_KEY` | да (build-time) | Publishable key для фронтенда. На Render Blueprint подставляет его из `CLERK_PUBLISHABLE_KEY`. |
-| `PORT` | да (Render) | Render задаёт сам. Локально — `5000`. |
+| `PORT` | да | Koyeb задаёт сам (8080). Локально — `5000`. |
 | `SERVE_WEB` | нет | `false` отключает раздачу фронтенда из API-сервиса. |
 | `WEB_DIST_DIR` | нет | Путь к собранному фронтенду, если он лежит нестандартно. |
 | `MIGRATIONS_DIR` | нет | Путь к миграциям Drizzle. |
 | `RUN_MIGRATIONS` | нет | `false` отключает автоматические миграции при старте. |
 | `MIGRATION_ATTEMPTS` | нет | Сколько раз пытаться применить миграции при старте (по умолчанию 10). |
+| `VITE_CLERK_PUBLISHABLE_KEY` | нет | Только fallback для локальной разработки без API. |
 | `VITE_CLERK_PROXY_URL` | нет | Например `/api/__clerk`, если используете Clerk proxy. |
 
-### Особенности free-плана Render
+### Бесплатные лимиты
 
-- Web Service засыпает после простоя: первый запрос может идти дольше.
-- Free PostgreSQL на Render имеет ограниченный срок жизни — проверьте
-  актуальные условия Render и при необходимости перейдите на платный план.
-- Для нескольких инстансов автоматические миграции при старте лучше
-  заменить на Render `preDeployCommand`, чтобы избежать гонки.
+- Supabase Free: PostgreSQL, лимиты по размеру БД и трафику — см. тарифы Supabase.
+- Koyeb Free: один web-сервис, 512 MB RAM, 0.1 vCPU, регион Франкфурт или
+  Вашингтон; списаний за free-инстанс нет.
+- При первом запросе после простоя возможна небольшая задержка (cold start).
 
 ## Локальный запуск
 
 Нужны Node.js 24+ и pnpm 10+.
 
 > В `pnpm-workspace.yaml` оставлены только Linux-бинарники нативных
-> зависимостей, чтобы уменьшить размер деплоя на Render. Для локальной
+> зависимостей, чтобы уменьшить размер деплоя. Для локальной
 > разработки на Windows используйте WSL или уберите соответствующие
 > `overrides` для `win32-x64`.
 
