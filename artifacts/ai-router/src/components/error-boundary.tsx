@@ -81,7 +81,7 @@ export class ErrorBoundary extends Component<
       toError(error),
       info.componentStack,
     );
-    this.setState({ componentStack: info.componentStack });
+    this.setState({ componentStack: info.componentStack ?? null });
   }
 
   componentDidUpdate(prevProps: ErrorBoundaryProps): void {
