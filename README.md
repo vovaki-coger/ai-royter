@@ -26,9 +26,10 @@ Node-сервис, который отдаёт и API, и собранный Rea
    репозиторий `vovaki-coger/ai-royter`.
 2. Render попросит заполнить переменные без значений:
    - `CLERK_PUBLISHABLE_KEY` — publishable key из Clerk;
-   - `VITE_CLERK_PUBLISHABLE_KEY` — **то же самое значение**, оно
-     встраивается во фронтенд при сборке;
    - `CLERK_SECRET_KEY` — secret key из Clerk (только сервер).
+
+   Blueprint сам передаёт publishable key в сборку фронтенда как
+   `VITE_CLERK_PUBLISHABLE_KEY`, поэтому вводить его дважды не нужно.
 3. Нажмите **Apply**. Render создаст базу, соберёт проект и запустит
    сервис. Миграции БД применяются автоматически при старте.
 4. После первого деплоя откройте URL вида
@@ -57,7 +58,7 @@ Node-сервис, который отдаёт и API, и собранный Rea
 | `SESSION_SECRET` | да | Шифрование ключей провайдеров. Render генерирует автоматически. Не меняйте после сохранения ключей. |
 | `CLERK_PUBLISHABLE_KEY` | да | Clerk publishable key для API. |
 | `CLERK_SECRET_KEY` | да | Clerk secret key. |
-| `VITE_CLERK_PUBLISHABLE_KEY` | да | Тот же publishable key для фронтенда (build-time). |
+| `VITE_CLERK_PUBLISHABLE_KEY` | да (build-time) | Publishable key для фронтенда. На Render Blueprint подставляет его из `CLERK_PUBLISHABLE_KEY`. |
 | `PORT` | да (Render) | Render задаёт сам. Локально — `5000`. |
 | `SERVE_WEB` | нет | `false` отключает раздачу фронтенда из API-сервиса. |
 | `WEB_DIST_DIR` | нет | Путь к собранному фронтенду, если он лежит нестандартно. |

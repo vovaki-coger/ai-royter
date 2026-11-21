@@ -16,7 +16,7 @@ services:
     runtime: node
     plan: free
     region: frankfurt
-    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm run build:render
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && VITE_CLERK_PUBLISHABLE_KEY="$CLERK_PUBLISHABLE_KEY" pnpm run build:render
     startCommand: NODE_ENV=production node artifacts/api-server/dist/index.mjs
     healthCheckPath: /api/healthz
     autoDeploy: true
@@ -34,11 +34,9 @@ services:
       - key: LOG_LEVEL
         value: info
       # Clerk keys are entered once in the Render dashboard when the Blueprint
-      # is created. VITE_* variables are embedded into the frontend at build
-      # time, so a change requires a new deploy.
+      # is created. The publishable key is also embedded into the frontend at
+      # build time, so changing it requires a new deploy.
       - key: CLERK_PUBLISHABLE_KEY
         sync: false
       - key: CLERK_SECRET_KEY
-        sync: false
-      - key: VITE_CLERK_PUBLISHABLE_KEY
         sync: false
