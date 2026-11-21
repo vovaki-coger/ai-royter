@@ -233,10 +233,10 @@ function AuthForm({ mode }: { mode: 'sign-in' | 'sign-up' }) {
     }
   }
 
-  return <form className="w-full max-w-[380px]" onSubmit={submit}>
+  return <form className="w-full max-w-[380px]" onSubmit={submit} noValidate>
     <h2 className="text-2xl font-bold text-[#203c31] mb-1">{mode === 'sign-in' ? 'Welcome back' : 'Create your workspace'}</h2>
     <p className="text-sm text-[#778078] mb-6">{mode === 'sign-in' ? 'Sign in to your private model control room.' : 'One clear view of every model connection.'}</p>
-    <div className="field"><label htmlFor="auth-email">Email</label><input id="auth-email" type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" /></div>
+    <div className="field"><label htmlFor="auth-email">Login / Email</label><input id="auth-email" type="text" autoComplete="username" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="KLABOK or you@example.com" /></div>
     <div className="field" style={{ marginTop: 14 }}><label htmlFor="auth-password">Password</label><input id="auth-password" type="password" autoComplete={mode === 'sign-in' ? 'current-password' : 'new-password'} required minLength={6} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 6 characters" /></div>
     {error && <div className="notice-error" role="alert" style={{ marginTop: 14 }}>{error}</div>}
     <button type="submit" className="button button-primary" disabled={busy} style={{ marginTop: 18, width: '100%' }}>{busy ? 'Please wait…' : mode === 'sign-in' ? 'Sign in' : 'Create account'}</button>
