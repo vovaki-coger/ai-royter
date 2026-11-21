@@ -8,6 +8,7 @@ import {
 export interface ErrorFallbackProps {
   error: Error;
   resetError: () => void;
+  componentStack?: string | null;
 }
 
 interface ErrorBoundaryProps {
@@ -19,6 +20,7 @@ interface ErrorBoundaryProps {
 
 interface ErrorBoundaryState {
   error: Error | null;
+  componentStack: string | null;
 }
 
 function toError(value: unknown): Error {
@@ -35,7 +37,7 @@ function toError(value: unknown): Error {
   }
 }
 
-function DefaultFallback({ error, resetError }: ErrorFallbackProps) {
+function DefaultFallback({ error, resetError, componentStack }: ErrorFallbackProps) {
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-gray-50 p-6">
       <div className="max-w-lg w-full text-center">
@@ -48,6 +50,8 @@ function DefaultFallback({ error, resetError }: ErrorFallbackProps) {
         </p>
         <pre className="mt-4 overflow-x-auto rounded bg-gray-100 p-3 text-left text-xs text-gray-800">
           {error.message || String(error)}
+          {'\n\n'}
+          {componentStack || ''}
         </pre>
         <button
           type="button"
@@ -65,10 +69,10 @@ export class ErrorBoundary extends Component<
   ErrorBoundaryProps,
   ErrorBoundaryState
 > {
-  state: ErrorBoundaryState = { error: null };
+  state: ErrorBoundaryState = { error: null, componentStack: null };
 
   static getDerivedStateFromError(error: unknown): ErrorBoundaryState {
-    return { error: toError(error) };
+    return { error: toError(error), componentStack: null };
   }
 
   componentDidCatch(error: unknown, info: ErrorInfo): void {
@@ -77,6 +81,7 @@ export class ErrorBoundary extends Component<
       toError(error),
       info.componentStack,
     );
+    this.setState({ componentStack: info.componentStack });
   }
 
   componentDidUpdate(prevProps: ErrorBoundaryProps): void {
@@ -89,15 +94,15 @@ export class ErrorBoundary extends Component<
   }
 
   resetError = (): void => {
-    this.setState({ error: null });
+    this.setState({ error: null, componentStack: null });
   };
 
   render(): ReactNode {
-    const { error } = this.state;
+    const { error, componentStack } = this.state;
     if (error === null) {
       return this.props.children;
     }
     const Fallback = this.props.FallbackComponent ?? DefaultFallback;
-    return <Fallback error={error} resetError={this.resetError} />;
+    return <Fallback error={error} resetError={this.resetError} componentStack={componentStack} />;
   }
 }
