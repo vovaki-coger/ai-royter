@@ -16,9 +16,26 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
+async function applyMigrations(): Promise<void> {
+  const attempts = Number(process.env.MIGRATION_ATTEMPTS ?? 10);
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      await runMigrations();
+      return;
+    } catch (error) {
+      if (attempt >= attempts) throw error;
+      logger.warn(
+        { err: error, attempt },
+        "Database is not ready yet; retrying migrations",
+      );
+      await new Promise((resolve) => setTimeout(resolve, 3_000));
+    }
+  }
+}
+
 async function start(): Promise<void> {
   if (process.env.RUN_MIGRATIONS !== "false") {
-    await runMigrations();
+    await applyMigrations();
     logger.info("Database migrations applied");
   }
 
