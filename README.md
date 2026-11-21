@@ -109,6 +109,18 @@ pnpm run typecheck
 pnpm run build:render
 ```
 
+### Миграции
+
+После изменения схемы в `lib/db/src/schema` сгенерируйте новую миграцию
+и закоммитьте её:
+
+```bash
+pnpm --filter @workspace/db exec drizzle-kit generate --name describe_change
+```
+
+При старте API применит все неприменённые миграции из
+`lib/db/migrations`.
+
 ## Использование роутера
 
 1. Войдите в дашборд и подключите провайдера на странице **Providers**.
