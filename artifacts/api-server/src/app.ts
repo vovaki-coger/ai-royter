@@ -43,8 +43,9 @@ app.use(express.urlencoded({ extended: true }));
 const clerkPublishableKey =
   process.env.CLERK_PUBLISHABLE_KEY ??
   process.env.VITE_CLERK_PUBLISHABLE_KEY;
+const clerkSecretKey = process.env.CLERK_SECRET_KEY;
 
-if (clerkPublishableKey) {
+if (clerkPublishableKey && clerkSecretKey) {
   app.use(
     clerkMiddleware((req) => ({
       publishableKey: publishableKeyFromHost(
@@ -55,7 +56,7 @@ if (clerkPublishableKey) {
   );
 } else {
   logger.warn(
-    "CLERK_PUBLISHABLE_KEY is not set; authenticated routes will return 401.",
+    "Clerk is not fully configured (CLERK_PUBLISHABLE_KEY / CLERK_SECRET_KEY); authenticated routes will return 401.",
   );
 }
 
