@@ -79,6 +79,11 @@ Node-сервис, который отдаёт и API, и собранный Rea
 
 Нужны Node.js 24+ и pnpm 10+.
 
+> В `pnpm-workspace.yaml` оставлены только Linux-бинарники нативных
+> зависимостей, чтобы уменьшить размер деплоя на Render. Для локальной
+> разработки на Windows используйте WSL или уберите соответствующие
+> `overrides` для `win32-x64`.
+
 ```bash
 corepack enable
 pnpm install
