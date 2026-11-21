@@ -6,6 +6,7 @@ import pinoHttp from "pino-http";
 import { clerkMiddleware } from "@clerk/express";
 import { publishableKeyFromHost } from "@clerk/shared/keys";
 import router from "./routes";
+import healthRouter from "./routes/health";
 import { logger } from "./lib/logger";
 import {
   CLERK_PROXY_PATH,
@@ -39,6 +40,9 @@ app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
 app.use(cors({ credentials: true, origin: true }));
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
+
+// Keep the Render health check independent from Clerk availability.
+app.use("/api", healthRouter);
 
 const clerkPublishableKey =
   process.env.CLERK_PUBLISHABLE_KEY ??
