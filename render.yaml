@@ -1,0 +1,44 @@
+# Render Blueprint for the AI Router.
+#
+# One Node web service serves both the Express API and the built React app,
+# so the browser can call `/api/*` on the same origin. A managed PostgreSQL
+# database stores providers, router keys and request history.
+databases:
+  - name: ai-router-db
+    databaseName: ai_router
+    user: ai_router
+    plan: free
+    region: frankfurt
+
+services:
+  - type: web
+    name: ai-router
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm run build:render
+    startCommand: NODE_ENV=production node artifacts/api-server/dist/index.mjs
+    healthCheckPath: /api/healthz
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ai-router-db
+          property: connectionString
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: NODE_VERSION
+        value: 24.22.3
+      - key: SERVE_WEB
+        value: "true"
+      - key: LOG_LEVEL
+        value: info
+      # Clerk keys are entered once in the Render dashboard when the Blueprint
+      # is created. VITE_* variables are embedded into the frontend at build
+      # time, so a change requires a new deploy.
+      - key: CLERK_PUBLISHABLE_KEY
+        sync: false
+      - key: CLERK_SECRET_KEY
+        sync: false
+      - key: VITE_CLERK_PUBLISHABLE_KEY
+        sync: false

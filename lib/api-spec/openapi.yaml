@@ -1,0 +1,532 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: providers
+    description: Provider connections and discovered models
+  - name: router
+    description: Router keys, dashboard, and compatible completions
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+  /router/dashboard:
+    get:
+      operationId: getRouterDashboard
+      tags: [router]
+      summary: Get dashboard overview
+      responses:
+        "200":
+          description: Dashboard summary and recent activity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RouterDashboard"
+  /providers:
+    get:
+      operationId: listProviders
+      tags: [providers]
+      summary: List connected providers and models
+      responses:
+        "200":
+          description: Provider connections
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Provider"
+    post:
+      operationId: createProvider
+      tags: [providers]
+      summary: Validate and connect a provider
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProviderInput"
+      responses:
+        "201":
+          description: Connected provider and its discovered models
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProviderConnection"
+        "400":
+          description: Provider could not be validated
+        "409":
+          description: Provider ID is already in use
+  /providers/preview-models:
+    post:
+      operationId: previewProviderModels
+      tags: [providers]
+      summary: Fetch models without saving provider credentials
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProviderModelPreviewInput"
+      responses:
+        "200":
+          description: Models available from the provider
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProviderModelPreviewResponse"
+        "400":
+          description: Provider could not be reached or its key was rejected
+  /providers/{providerId}/refresh:
+    post:
+      operationId: refreshProviderModels
+      tags: [providers]
+      summary: Refresh models from a provider
+      parameters:
+        - name: providerId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Refreshed provider and its models
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProviderConnection"
+  /providers/{providerId}:
+    delete:
+      operationId: deleteProvider
+      tags: [providers]
+      summary: Remove a provider connection
+      parameters:
+        - name: providerId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Provider removed
+  /router/keys:
+    get:
+      operationId: listRouterKeys
+      tags: [router]
+      summary: List router keys
+      responses:
+        "200":
+          description: Router keys without their secret values
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RouterKey"
+    post:
+      operationId: createRouterKey
+      tags: [router]
+      summary: Create a router key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RouterKeyInput"
+      responses:
+        "201":
+          description: New router key (secret shown only once)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreatedRouterKey"
+  /router/keys/{keyId}:
+    delete:
+      operationId: revokeRouterKey
+      tags: [router]
+      summary: Revoke a router key
+      parameters:
+        - name: keyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Router key revoked
+  /router/requests:
+    get:
+      operationId: listRouterRequests
+      tags: [router]
+      summary: List recent routed requests
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: Recent request activity
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RouterRequest"
+  /router/test-completion:
+    post:
+      operationId: testRouterCompletion
+      tags: [router]
+      summary: Send a quick test prompt through a provider
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RouterTestInput"
+      responses:
+        "200":
+          description: Test response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RouterTestResult"
+  /v1/chat/completions:
+    post:
+      operationId: createChatCompletion
+      tags: [router]
+      summary: OpenAI-compatible chat completion endpoint
+      description: Passes chat requests through to the selected provider, including tools, tool results, streaming, and provider-specific extension fields.
+      security:
+        - RouterBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatCompletionInput"
+      responses:
+        "200":
+          description: Provider completion response (JSON or streamed SSE)
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+            text/event-stream:
+              schema:
+                type: string
+        "401":
+          description: Invalid router key
+        "404":
+          description: Provider or model not found
+  /v1/responses:
+    post:
+      operationId: createOpenAIResponse
+      tags: [router]
+      summary: OpenAI-compatible Responses API endpoint
+      description: Passes Responses API requests through to providers that implement the Responses API. Codex and other Responses clients can use this endpoint where the connected provider supports it.
+      security:
+        - RouterBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OpenAIResponsesInput"
+      responses:
+        "200":
+          description: Provider response (JSON or streamed SSE)
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+            text/event-stream:
+              schema:
+                type: string
+        "401":
+          description: Invalid router key
+        "404":
+          description: Provider or model not found
+  /v1/models:
+    get:
+      operationId: listOpenAIModels
+      tags: [router]
+      summary: List models available through the router key
+      description: Returns provider-confirmed models refreshed at most once per minute. Models that providers mark unavailable or reject with HTTP 404 are omitted.
+      security:
+        - RouterBearer: []
+      responses:
+        "200":
+          description: Models available to this router key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OpenAIModelsResponse"
+        "401":
+          description: Invalid router key
+components:
+  securitySchemes:
+    RouterBearer:
+      type: http
+      scheme: bearer
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+    ProviderInput:
+      type: object
+      required: [kind, providerSlug, name, apiProtocol, apiKey]
+      properties:
+        kind:
+          type: string
+          enum: [nvidia, openrouter, deepseek, openai, custom]
+        providerSlug:
+          type: string
+          minLength: 1
+          maxLength: 63
+          pattern: "^[a-z][a-z0-9_-]{0,62}$"
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        apiProtocol:
+          type: string
+          enum: [openai_chat_completions]
+        apiKey:
+          type: string
+          minLength: 1
+          maxLength: 4096
+        baseUrl:
+          type: ["string", "null"]
+          maxLength: 500
+    ProviderModelPreviewInput:
+      type: object
+      required: [kind, apiProtocol, apiKey]
+      properties:
+        kind:
+          type: string
+          enum: [nvidia, openrouter, deepseek, openai, custom]
+        apiProtocol:
+          type: string
+          enum: [openai_chat_completions]
+        apiKey:
+          type: string
+          minLength: 1
+          maxLength: 4096
+        baseUrl:
+          type: ["string", "null"]
+          maxLength: 500
+    ProviderModelPreview:
+      type: object
+      required: [modelId, name, contextLength]
+      properties:
+        modelId: { type: string }
+        name: { type: string }
+        contextLength: { type: ["integer", "null"] }
+    ProviderModelPreviewResponse:
+      type: object
+      required: [models]
+      properties:
+        models:
+          type: array
+          items: { $ref: "#/components/schemas/ProviderModelPreview" }
+    Provider:
+      type: object
+      required: [id, kind, providerSlug, name, apiProtocol, baseUrl, keyHint, modelCount, status, createdAt, lastSyncedAt]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string, enum: [nvidia, openrouter, deepseek, openai, custom] }
+        providerSlug: { type: string }
+        name: { type: string }
+        apiProtocol: { type: string, enum: [openai_chat_completions] }
+        baseUrl: { type: string }
+        keyHint: { type: string }
+        modelCount: { type: integer }
+        status: { type: string, enum: [connected, error] }
+        createdAt: { type: string, format: date-time }
+        lastSyncedAt: { type: ["string", "null"], format: date-time }
+        models:
+          type: array
+          items: { $ref: "#/components/schemas/ProviderModel" }
+    ProviderModel:
+      type: object
+      required: [id, providerId, modelId, name]
+      properties:
+        id: { type: string, format: uuid }
+        providerId: { type: string, format: uuid }
+        modelId: { type: string }
+        name: { type: string }
+        contextLength: { type: ["integer", "null"] }
+    ProviderConnection:
+      type: object
+      required: [provider, models]
+      properties:
+        provider: { $ref: "#/components/schemas/Provider" }
+        models:
+          type: array
+          items: { $ref: "#/components/schemas/ProviderModel" }
+    RouterKeyInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 80 }
+    RouterKey:
+      type: object
+      required: [id, name, prefix, createdAt, lastUsedAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        prefix: { type: string }
+        createdAt: { type: string, format: date-time }
+        lastUsedAt: { type: ["string", "null"], format: date-time }
+    CreatedRouterKey:
+      allOf:
+        - $ref: "#/components/schemas/RouterKey"
+        - type: object
+          required: [key]
+          properties:
+            key: { type: string }
+    RouterRequest:
+      type: object
+      required: [id, model, providerName, status, latencyMs, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        model: { type: string }
+        providerName: { type: ["string", "null"] }
+        status: { type: integer }
+        latencyMs: { type: integer }
+        createdAt: { type: string, format: date-time }
+    RouterDashboard:
+      type: object
+      required: [providerCount, modelCount, routerKeyCount, requestsToday, recentRequests]
+      properties:
+        providerCount: { type: integer }
+        modelCount: { type: integer }
+        routerKeyCount: { type: integer }
+        requestsToday: { type: integer }
+        recentRequests:
+          type: array
+          items: { $ref: "#/components/schemas/RouterRequest" }
+    RouterTestInput:
+      type: object
+      required: [model, prompt]
+      properties:
+        model: { type: string, minLength: 1, maxLength: 300 }
+        prompt: { type: string, minLength: 1, maxLength: 2000 }
+    RouterTestResult:
+      type: object
+      required: [model, providerName, response, latencyMs]
+      properties:
+        model: { type: string }
+        providerName: { type: string }
+        response: { type: string }
+        latencyMs: { type: integer }
+    OpenAIModel:
+      type: object
+      required: [id, object, created, owned_by]
+      properties:
+        id: { type: string }
+        object: { type: string, enum: [model] }
+        created: { type: integer }
+        owned_by: { type: string }
+        context_length: { type: integer, minimum: 1 }
+        input_modalities:
+          type: array
+          items: { type: string }
+        supports_vision: { type: boolean }
+        architecture:
+          type: object
+          properties:
+            input_modalities:
+              type: array
+              items: { type: string }
+    OpenAIModelsResponse:
+      type: object
+      required: [object, data]
+      properties:
+        object: { type: string, enum: [list] }
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/OpenAIModel" }
+    ChatCompletionInput:
+      type: object
+      required: [model, messages]
+      properties:
+        model: { type: string, minLength: 1, maxLength: 300 }
+        messages:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [role]
+            properties:
+              role: { type: string, enum: [system, developer, user, assistant, tool, function] }
+              content: {}
+              name: { type: string }
+              tool_call_id: { type: string }
+            additionalProperties: true
+          description: Messages in standard OpenAI chat format
+        stream: { type: boolean, default: false }
+        temperature: { type: number, minimum: 0, maximum: 2 }
+        max_tokens: { type: integer, minimum: 1 }
+        max_completion_tokens: { type: integer, minimum: 1 }
+        top_p: { type: number, minimum: 0, maximum: 1 }
+        stop:
+          oneOf:
+            - type: string
+            - type: array
+              items: { type: string }
+        tools:
+          type: array
+          items: { type: object, additionalProperties: true }
+          description: OpenAI-compatible tool definitions
+        tool_choice: {}
+        parallel_tool_calls: { type: boolean }
+        stream_options:
+          type: object
+          additionalProperties: true
+      additionalProperties: true
+    OpenAIResponsesInput:
+      type: object
+      required: [model, input]
+      properties:
+        model: { type: string, minLength: 1, maxLength: 300 }
+        input: {}
+        stream: { type: boolean, default: false }
+        instructions: { type: string }
+        tools:
+          type: array
+          items: { type: object, additionalProperties: true }
+        tool_choice: {}
+      additionalProperties: true
+
