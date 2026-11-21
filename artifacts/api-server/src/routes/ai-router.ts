@@ -71,7 +71,14 @@ const authenticated: RequestHandler = (req, res, next) => {
   let userId: string | undefined;
   try {
     const auth = getAuth(req);
-    userId = auth?.sessionClaims?.userId || auth?.userId;
+    const claimUserId = auth?.sessionClaims?.userId;
+    const sessionUserId = auth?.userId;
+    userId =
+      typeof claimUserId === "string"
+        ? claimUserId
+        : typeof sessionUserId === "string"
+          ? sessionUserId
+          : undefined;
   } catch {
     // Clerk is not configured (or its middleware is not mounted). Treat the
     // request as unauthenticated instead of failing with a 500.
