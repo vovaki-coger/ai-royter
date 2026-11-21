@@ -3,17 +3,10 @@ import path from "node:path";
 import express, { type Express } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
-import { clerkMiddleware } from "@clerk/express";
-import { publishableKeyFromHost } from "@clerk/shared/keys";
 import router from "./routes";
 import configRouter from "./routes/config";
 import healthRouter from "./routes/health";
 import { logger } from "./lib/logger";
-import {
-  CLERK_PROXY_PATH,
-  clerkProxyMiddleware,
-  getClerkProxyHost,
-} from "./middlewares/clerkProxyMiddleware";
 
 const app: Express = express();
 app.set("trust proxy", 1);
@@ -37,34 +30,13 @@ app.use(
     },
   }),
 );
-app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
 app.use(cors({ credentials: true, origin: true }));
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 
-// Public endpoints that must work even when Clerk is not configured.
+// Public endpoints that must work without authentication.
 app.use("/api", configRouter);
 app.use("/api", healthRouter);
-
-const clerkPublishableKey =
-  process.env.CLERK_PUBLISHABLE_KEY ??
-  process.env.VITE_CLERK_PUBLISHABLE_KEY;
-const clerkSecretKey = process.env.CLERK_SECRET_KEY;
-
-if (clerkPublishableKey && clerkSecretKey) {
-  app.use(
-    clerkMiddleware((req) => ({
-      publishableKey: publishableKeyFromHost(
-        getClerkProxyHost(req) ?? "",
-        clerkPublishableKey,
-      ),
-    })),
-  );
-} else {
-  logger.warn(
-    "Clerk is not fully configured (CLERK_PUBLISHABLE_KEY / CLERK_SECRET_KEY); authenticated routes will return 401.",
-  );
-}
 
 app.use("/api", router);
 

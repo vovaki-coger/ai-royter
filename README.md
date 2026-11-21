@@ -51,8 +51,8 @@ React-фронтенд с одного домена.
    flyctl secrets set \
      DATABASE_URL="postgresql://..." \
      SESSION_SECRET="<длинная случайная строка>" \
-     CLERK_PUBLISHABLE_KEY="pk_test_..." \
-     CLERK_SECRET_KEY="sk_test_..."
+     SUPABASE_URL="https://<project-ref>.supabase.co" \
+     SUPABASE_PUBLISHABLE_KEY="sb_publishable_..."
    flyctl deploy
    ```
 
@@ -65,15 +65,20 @@ Publishable key для фронтенда больше не встраивает
 через публичный `GET /api/config`, поэтому после смены Clerk-ключей достаточно
 обычного redeploy без очистки build-кэша.
 
-### Clerk
+### Supabase Auth
 
-1. Откройте ваше приложение на [dashboard.clerk.com](https://dashboard.clerk.com)
-   и скопируйте **Publishable key** и **Secret key**.
-2. Добавьте домен Fly.io (`https://ai-router-vovaki.fly.dev`) в разрешённые
-   origins/domains приложения Clerk.
-3. Приложение также умеет работать через Clerk proxy (`/api/__clerk`).
-   Для этого задайте `VITE_CLERK_PROXY_URL=/api/__clerk` при сборке и
-   настройте proxy URL в Clerk Dashboard. По умолчанию proxy выключен.
+Авторизация теперь работает через Supabase Auth — Clerk больше не нужен.
+
+1. Project URL возьмите из адреса страницы Supabase:
+   `https://<project-ref>.supabase.co`. Это `SUPABASE_URL`.
+2. Publishable key (`sb_publishable_...`) из **Settings → API Keys** — это
+   `SUPABASE_PUBLISHABLE_KEY`. Secret key (`sb_secret_...`) приложению не нужен.
+3. В Supabase → **Authentication → URL Configuration** добавьте
+   `https://ai-router-vovaki.fly.dev` и `https://ai-router-vovaki.fly.dev/**`
+   в Site URL / Redirect URLs.
+4. Вход и регистрация — обычные email + password через Supabase Auth.
+   Если включено подтверждение email, после регистрации нужно подтвердить
+   письмо и затем войти.
 
 ### Переменные окружения
 
@@ -81,16 +86,14 @@ Publishable key для фронтенда больше не встраивает
 | --- | --- | --- |
 | `DATABASE_URL` | да | PostgreSQL из Supabase (Transaction pooler, порт 6543). |
 | `SESSION_SECRET` | да | Шифрование ключей провайдеров. Не меняйте после сохранения ключей. |
-| `CLERK_PUBLISHABLE_KEY` | да | Clerk publishable key для API и для фронтенда (через `/api/config`). |
-| `CLERK_SECRET_KEY` | да | Clerk secret key. |
+| `SUPABASE_URL` | да | Project URL Supabase (`https://<ref>.supabase.co`). |
+| `SUPABASE_PUBLISHABLE_KEY` | да | Publishable key Supabase (`sb_publishable_...`). |
 | `PORT` | да | Fly.io задаёт сам (8080). Локально — `5000`. |
 | `SERVE_WEB` | нет | `false` отключает раздачу фронтенда из API-сервиса. |
 | `WEB_DIST_DIR` | нет | Путь к собранному фронтенду, если он лежит нестандартно. |
 | `MIGRATIONS_DIR` | нет | Путь к миграциям Drizzle. |
 | `RUN_MIGRATIONS` | нет | `false` отключает автоматические миграции при старте. |
 | `MIGRATION_ATTEMPTS` | нет | Сколько раз пытаться применить миграции при старте (по умолчанию 10). |
-| `VITE_CLERK_PUBLISHABLE_KEY` | нет | Только fallback для локальной разработки без API. |
-| `VITE_CLERK_PROXY_URL` | нет | Например `/api/__clerk`, если используете Clerk proxy. |
 
 ### Бесплатные лимиты
 

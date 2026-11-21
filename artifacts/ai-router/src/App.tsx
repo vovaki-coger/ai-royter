@@ -1,7 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
-import { ClerkProvider, Show, SignIn, SignUp, useClerk, useUser } from '@clerk/react';
-import { publishableKeyFromHost } from '@clerk/react/internal';
-import { shadcn } from '@clerk/themes';
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { Link, Redirect, Route, Router as WouterRouter, Switch, useLocation } from 'wouter';
 import {
@@ -15,104 +12,146 @@ import {
   useDeleteProvider, useGetRouterDashboard, useHealthCheck, useListProviders,
   useListRouterKeys, useListRouterRequests, usePreviewProviderModels,
   useRefreshProviderModels, useRevokeRouterKey, useTestRouterCompletion,
+  setAuthTokenGetter,
 } from '@workspace/api-client-react';
 import type { Provider, ProviderInputApiProtocol, ProviderInputKind, ProviderModelPreview, RouterKey } from '@workspace/api-client-react';
 import NotFound from '@/pages/not-found';
 
 const queryClient = new QueryClient();
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
-const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
-
-function normalizeClerkKey(key: string): string {
-  if (!key) return '';
-  try {
-    return publishableKeyFromHost(window.location.hostname, key);
-  } catch {
-    return key;
-  }
+if (typeof localStorage !== 'undefined') {
+  setAuthTokenGetter(() => localStorage.getItem('air_access_token'));
 }
 
-const buildTimeClerkKey = normalizeClerkKey(
-  import.meta.env.VITE_CLERK_PUBLISHABLE_KEY ?? '',
-);
+type RuntimeConfig = {
+  supabaseUrl?: string;
+  supabasePublishableKey?: string;
+};
 
-function useClerkPublishableKey(): string | null {
-  const [key, setKey] = useState<string | null>(
-    () => buildTimeClerkKey || null,
-  );
+function useRuntimeConfig(): RuntimeConfig | null {
+  const [config, setConfig] = useState<RuntimeConfig | null>(null);
   useEffect(() => {
-    if (key !== null) return;
     let cancelled = false;
     fetch(`${basePath}/api/config`)
       .then((response) => {
         if (!response.ok) throw new Error('config unavailable');
-        return response.json() as Promise<{ clerkPublishableKey?: string }>;
+        return response.json() as Promise<RuntimeConfig>;
       })
-      .then((config) => {
-        if (!cancelled) setKey(normalizeClerkKey(config.clerkPublishableKey ?? ''));
+      .then((value) => {
+        if (!cancelled) setConfig(value);
       })
       .catch(() => {
-        if (!cancelled) setKey('');
+        if (!cancelled) setConfig({});
       });
     return () => {
       cancelled = true;
     };
-  }, [key]);
-  return key;
+  }, []);
+  return config;
 }
 
-function stripBase(path: string) {
-  return basePath && path.startsWith(basePath) ? path.slice(basePath.length) || '/' : path;
-}
-
-const clerkAppearance = {
-  theme: shadcn,
-  cssLayerName: 'clerk',
-  options: {
-    logoPlacement: 'inside' as const,
-    logoLinkUrl: basePath || '/',
-    logoImageUrl: `${window.location.origin}${basePath}/logo.svg`,
-  },
-  variables: {
-    colorPrimary: '#256248',
-    colorForeground: '#203c31',
-    colorMutedForeground: '#778078',
-    colorDanger: '#ad463e',
-    colorBackground: '#fbfaf4',
-    colorInput: '#fffefa',
-    colorInputForeground: '#293e33',
-    colorNeutral: '#dcded3',
-    fontFamily: 'DM Sans, sans-serif',
-    borderRadius: '0.8rem',
-  },
-  elements: {
-    rootBox: 'w-full flex justify-center',
-    cardBox: 'bg-[#fbfaf4] rounded-2xl w-[440px] max-w-full overflow-hidden',
-    card: '!shadow-none !border-0 !bg-transparent !rounded-none',
-    footer: '!shadow-none !border-0 !bg-transparent !rounded-none',
-    headerTitle: 'text-[#203c31] font-bold',
-    headerSubtitle: 'text-[#778078]',
-    socialButtonsBlockButtonText: 'text-[#314b3c] font-semibold',
-    formFieldLabel: 'text-[#526156] font-semibold',
-    footerActionLink: 'text-[#256248] font-semibold',
-    footerActionText: 'text-[#778078]',
-    dividerText: 'text-[#778078]',
-    identityPreviewEditButton: 'text-[#256248]',
-    formFieldSuccessText: 'text-[#39784c]',
-    alertText: 'text-[#9e4940]',
-    logoBox: 'mb-2',
-    logoImage: 'h-9',
-    socialButtonsBlockButton: 'border-[#e4e2d8] bg-[#fffefa] hover:bg-[#f1f4eb]',
-    formButtonPrimary: 'bg-[#256248] hover:bg-[#1b513a] text-white',
-    formFieldInput: 'border-[#dcded3] bg-[#fffefa] text-[#293e33]',
-    footerAction: 'text-[#778078]',
-    dividerLine: 'bg-[#e5e1d6]',
-    alert: 'border-[#f1d9d3] bg-[#fff0ed]',
-    otpCodeFieldInput: 'border-[#dcded3] bg-[#fffefa] text-[#293e33]',
-    formFieldRow: 'mb-4',
-    main: 'text-[#203c31]',
-  },
+type AuthUser = { id: string; email?: string };
+type AuthState = {
+  user: AuthUser | null;
+  loading: boolean;
+  signIn: (email: string, password: string) => Promise<void>;
+  signUp: (email: string, password: string) => Promise<void>;
+  signOut: () => Promise<void>;
 };
+
+const AuthContext = createContext<AuthState | null>(null);
+
+function AuthProvider({ config, children }: { config: RuntimeConfig; children: ReactNode }) {
+  const [accessToken, setAccessToken] = useState<string | null>(() => localStorage.getItem('air_access_token'));
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const authHeaders = (token?: string | null) => ({
+    apikey: config.supabasePublishableKey ?? '',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  });
+
+  useEffect(() => {
+    if (!accessToken) {
+      setUser(null);
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    fetch(`${config.supabaseUrl}/auth/v1/user`, { headers: authHeaders(accessToken) })
+      .then((response) => {
+        if (!response.ok) throw new Error('unauthorized');
+        return response.json() as Promise<AuthUser>;
+      })
+      .then((value) => {
+        if (!cancelled) setUser(value);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          localStorage.removeItem('air_access_token');
+          setAccessToken(null);
+          setUser(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken, config.supabaseUrl, config.supabasePublishableKey]);
+
+  const signIn = async (email: string, password: string) => {
+    const response = await fetch(`${config.supabaseUrl}/auth/v1/token?grant_type=password`, {
+      method: 'POST',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    if (!response.ok) throw new Error('Неверный email или пароль');
+    const data = await response.json() as { access_token: string; user: AuthUser };
+    localStorage.setItem('air_access_token', data.access_token);
+    setAccessToken(data.access_token);
+    setUser(data.user);
+  };
+
+  const signUp = async (email: string, password: string) => {
+    const response = await fetch(`${config.supabaseUrl}/auth/v1/signup`, {
+      method: 'POST',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    if (!response.ok) throw new Error('Не удалось создать аккаунт');
+    const data = await response.json() as { access_token?: string; user?: AuthUser };
+    if (!data.access_token) {
+      throw new Error('Подтвердите email, отправленный Supabase, затем войдите');
+    }
+    localStorage.setItem('air_access_token', data.access_token);
+    setAccessToken(data.access_token);
+    setUser(data.user ?? null);
+  };
+
+  const signOut = async () => {
+    try {
+      await fetch(`${config.supabaseUrl}/auth/v1/logout`, {
+        method: 'POST',
+        headers: authHeaders(accessToken),
+      });
+    } catch {
+      // Ignore network errors: the local session is removed regardless.
+    }
+    localStorage.removeItem('air_access_token');
+    setAccessToken(null);
+    setUser(null);
+  };
+
+  return <AuthContext.Provider value={{ user, loading, signIn, signUp, signOut }}>{children}</AuthContext.Provider>;
+}
+
+function useAuth(): AuthState {
+  const context = useContext(AuthContext);
+  if (!context) throw new Error('AuthProvider is missing');
+  return context;
+}
 
 function Brand({ compact = false }: { compact?: boolean }) {
   return <div className="brand" data-testid="brand-ai-router">
@@ -121,49 +160,31 @@ function Brand({ compact = false }: { compact?: boolean }) {
   </div>;
 }
 
-function ClerkQueryClientCacheInvalidator() {
-  const { addListener } = useClerk();
+function QueryClientCacheInvalidator() {
+  const { user } = useAuth();
   const client = useQueryClient();
   const prevUserIdRef = useRef<string | null | undefined>(undefined);
   useEffect(() => {
-    const unsubscribe = addListener(({ user }) => {
-      const userId = user?.id ?? null;
-      if (prevUserIdRef.current !== undefined && prevUserIdRef.current !== userId) client.clear();
-      prevUserIdRef.current = userId;
-    });
-    return unsubscribe;
-  }, [addListener, client]);
+    const userId = user?.id ?? null;
+    if (prevUserIdRef.current !== undefined && prevUserIdRef.current !== userId) client.clear();
+    prevUserIdRef.current = userId;
+  }, [user?.id, client]);
   return null;
 }
 
-function MissingClerkConfig() {
+function MissingAuthConfig() {
   return <main className="min-h-screen flex items-center justify-center bg-[#fbfaf4] p-6">
     <section className="max-w-xl w-full rounded-2xl border border-[#dcded3] bg-white p-8">
       <div className="brand" style={{ marginBottom: 18 }}><span className="brand-mark"><Network size={19} strokeWidth={2.3} /></span><span><span className="brand-name">NVIDIA AI Router</span><span className="brand-sub">Private control room</span></span></div>
-      <h1 className="text-2xl font-bold text-[#203c31]">Clerk is not configured</h1>
-      <p className="mt-3 text-sm text-[#526156]">Set <code className="mono">VITE_CLERK_PUBLISHABLE_KEY</code> in the Render environment, then trigger a new deploy so Vite can embed it into the frontend.</p>
-      <p className="mt-3 text-sm text-[#526156]">The API also needs <code className="mono">CLERK_PUBLISHABLE_KEY</code> and <code className="mono">CLERK_SECRET_KEY</code>. See <code className="mono">README.md</code> for the full deployment checklist.</p>
+      <h1 className="text-2xl font-bold text-[#203c31]">Supabase is not configured</h1>
+      <p className="mt-3 text-sm text-[#526156]">Set <code className="mono">SUPABASE_URL</code> and <code className="mono">SUPABASE_PUBLISHABLE_KEY</code> in the environment and restart the service. See <code className="mono">README.md</code>.</p>
     </section>
   </main>;
 }
 
-function ClerkProviderWithRoutes({ clerkPubKey }: { clerkPubKey: string }) {
-  const [, setLocation] = useLocation();
-  if (!clerkPubKey) return <MissingClerkConfig />;
-  return <ClerkProvider
-    publishableKey={clerkPubKey}
-    proxyUrl={clerkProxyUrl}
-    appearance={clerkAppearance}
-    signInUrl={`${basePath}/sign-in`}
-    signUpUrl={`${basePath}/sign-up`}
-    localization={{
-      signIn: { start: { title: 'Welcome back', subtitle: 'Sign in to your private model control room.' } },
-      signUp: { start: { title: 'Create your workspace', subtitle: 'One clear view of every model connection.' } },
-    }}
-    routerPush={(to) => setLocation(stripBase(to))}
-    routerReplace={(to) => setLocation(stripBase(to), { replace: true })}
-  >
-    <ClerkQueryClientCacheInvalidator />
+function AppRoutes() {
+  return <>
+    <QueryClientCacheInvalidator />
     <Switch>
       <Route path="/" component={HomeRedirect} />
       <Route path="/sign-in/*?" component={SignInPage} />
@@ -175,28 +196,63 @@ function ClerkProviderWithRoutes({ clerkPubKey }: { clerkPubKey: string }) {
       <Route path="/playground" component={ProtectedPlayground} />
       <Route component={NotFound} />
     </Switch>
-  </ClerkProvider>;
+  </>;
+}
+
+function AuthForm({ mode }: { mode: 'sign-in' | 'sign-up' }) {
+  const { signIn, signUp } = useAuth();
+  const [, setLocation] = useLocation();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      if (mode === 'sign-in') await signIn(email, password);
+      else await signUp(email, password);
+      setLocation('/dashboard');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Authentication failed');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return <form className="w-full max-w-[380px]" onSubmit={submit}>
+    <h2 className="text-2xl font-bold text-[#203c31] mb-1">{mode === 'sign-in' ? 'Welcome back' : 'Create your workspace'}</h2>
+    <p className="text-sm text-[#778078] mb-6">{mode === 'sign-in' ? 'Sign in to your private model control room.' : 'One clear view of every model connection.'}</p>
+    <div className="field"><label htmlFor="auth-email">Email</label><input id="auth-email" type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" /></div>
+    <div className="field" style={{ marginTop: 14 }}><label htmlFor="auth-password">Password</label><input id="auth-password" type="password" autoComplete={mode === 'sign-in' ? 'current-password' : 'new-password'} required minLength={6} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 6 characters" /></div>
+    {error && <div className="notice-error" role="alert" style={{ marginTop: 14 }}>{error}</div>}
+    <button type="submit" className="button button-primary" disabled={busy} style={{ marginTop: 18, width: '100%' }}>{busy ? 'Please wait…' : mode === 'sign-in' ? 'Sign in' : 'Create account'}</button>
+    <p className="field-hint" style={{ marginTop: 16, textAlign: 'center' }}>
+      {mode === 'sign-in' ? <>No account? <Link href="/sign-up">Create one</Link></> : <>Already have an account? <Link href="/sign-in">Sign in</Link></>}
+    </p>
+  </form>;
 }
 
 function SignInPage() {
   return <div className="auth-page">
     <div className="auth-backdrop"><div className="auth-brand"><Brand /></div><div className="auth-copy"><span>ONE KEY. EVERY MODEL.</span><h1>Your models,<br />on your terms.</h1><p>Connect the providers you trust. Route calls through one revocable key. Keep your upstream credentials server-side.</p></div><div className="auth-legal">PRIVATE BY DESIGN <span>•</span> OPENAI-COMPATIBLE</div></div>
-    <div className="auth-form-wrap"><SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} /></div>
+    <div className="auth-form-wrap"><AuthForm mode="sign-in" /></div>
   </div>;
 }
 
 function SignUpPage() {
   return <div className="auth-page">
     <div className="auth-backdrop"><div className="auth-brand"><Brand /></div><div className="auth-copy"><span>YOUR PRIVATE AI CONTROL ROOM</span><h1>Bring your<br />own intelligence.</h1><p>Connect NVIDIA NIM, OpenRouter, DeepSeek, OpenAI, or any OpenAI-compatible endpoint.</p></div><div className="auth-legal">YOUR ACCOUNTS. YOUR KEYS. YOUR CONTROL.</div></div>
-    <div className="auth-form-wrap"><SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} /></div>
+    <div className="auth-form-wrap"><AuthForm mode="sign-up" /></div>
   </div>;
 }
 
 function HomeRedirect() {
-  return <>
-    <Show when="signed-in"><Redirect to="/dashboard" /></Show>
-    <Show when="signed-out"><Landing /></Show>
-  </>;
+  const { user, loading } = useAuth();
+  if (loading) return <LoadingConfig />;
+  return user ? <Redirect to="/dashboard" /> : <Landing />;
 }
 
 function Landing() {
@@ -237,7 +293,9 @@ function Landing() {
 }
 
 function Protected({ children }: { children: ReactNode }) {
-  return <><Show when="signed-in">{children}</Show><Show when="signed-out"><Redirect to="/" /></Show></>;
+  const { user, loading } = useAuth();
+  if (loading) return <LoadingConfig />;
+  return user ? <>{children}</> : <Redirect to="/" />;
 }
 function ProtectedDashboard() { return <Protected><AppShell><Dashboard /></AppShell></Protected>; }
 function ProtectedProviders() { return <Protected><AppShell><ProvidersPage /></AppShell></Protected>; }
@@ -255,11 +313,10 @@ const navLinks = [
 function AppShell({ children }: { children: ReactNode }) {
   const [location] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const { user } = useUser();
-  const { signOut } = useClerk();
+  const { user, signOut } = useAuth();
   const health = useHealthCheck();
   const title = navLinks.find((entry) => entry.href === location || (entry.href === '/providers' && location.startsWith('/providers/')))?.label ?? 'Overview';
-  const initials = user?.firstName ? `${user.firstName[0]}${user.lastName?.[0] ?? ''}`.toUpperCase() : 'AI';
+  const initials = user?.email ? user.email.slice(0, 2).toUpperCase() : 'AI';
   return <div className="app-shell">
     <aside className={`sidebar ${mobileOpen ? 'open' : ''}`}>
       <Link href="/dashboard" onClick={() => setMobileOpen(false)}><Brand /></Link>
@@ -267,7 +324,7 @@ function AppShell({ children }: { children: ReactNode }) {
       {navLinks.map(({ href, label, icon: Icon }) => <Link key={href} href={href} onClick={() => setMobileOpen(false)} className={`nav-item ${location === href || (href === '/providers' && location.startsWith('/providers/')) ? 'active' : ''}`} data-testid={`link-nav-${label.toLowerCase().replaceAll(' ', '-')}`}><Icon size={17} strokeWidth={1.8} />{label}</Link>)}
       <div className="sidebar-bottom">
         <div className="secure-note"><strong><LockKeyhole size={14} /> Credentials stay upstream</strong>Only masked key hints are shown here. Provider secrets are never displayed again.</div>
-        <div className="profile-row"><span className="profile-avatar">{initials}</span><span className="profile-label">{user?.fullName || user?.primaryEmailAddress?.emailAddress || 'Your workspace'}<small>Private workspace</small></span><button className="icon-btn" aria-label="Sign out" data-testid="button-sign-out" onClick={() => signOut({ redirectUrl: basePath || '/' })}><LogOut size={16} color="#a8bdb1" /></button></div>
+        <div className="profile-row"><span className="profile-avatar">{initials}</span><span className="profile-label">{user?.email || 'Your workspace'}<small>Private workspace</small></span><button className="icon-btn" aria-label="Sign out" data-testid="button-sign-out" onClick={() => { void signOut(); }}><LogOut size={16} color="#a8bdb1" /></button></div>
       </div>
     </aside>
     <div className="main-area">
@@ -603,8 +660,9 @@ function LoadingConfig() {
 }
 
 function App() {
-  const clerkPubKey = useClerkPublishableKey();
-  return <QueryClientProvider client={queryClient}><WouterRouter base={basePath}>{clerkPubKey === null ? <LoadingConfig /> : <ClerkProviderWithRoutes clerkPubKey={clerkPubKey} />}</WouterRouter></QueryClientProvider>;
+  const config = useRuntimeConfig();
+  const ready = config !== null && Boolean(config.supabaseUrl && config.supabasePublishableKey);
+  return <QueryClientProvider client={queryClient}><WouterRouter base={basePath}>{config === null ? <LoadingConfig /> : ready ? <AuthProvider config={config as RuntimeConfig}><AppRoutes /></AuthProvider> : <MissingAuthConfig />}</WouterRouter></QueryClientProvider>;
 }
 
 export default App;

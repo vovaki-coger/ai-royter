@@ -11,7 +11,6 @@ import {
   lte,
   or,
 } from "drizzle-orm";
-import { getAuth } from "@clerk/express";
 import {
   db,
   routerKeysTable,
@@ -67,28 +66,41 @@ import {
 } from "../lib/router-security";
 
 const router: IRouter = Router();
-const authenticated: RequestHandler = (req, res, next) => {
-  let userId: string | undefined;
-  try {
-    const auth = getAuth(req);
-    const claimUserId = auth?.sessionClaims?.userId;
-    const sessionUserId = auth?.userId;
-    userId =
-      typeof claimUserId === "string"
-        ? claimUserId
-        : typeof sessionUserId === "string"
-          ? sessionUserId
-          : undefined;
-  } catch {
-    // Clerk is not configured (or its middleware is not mounted). Treat the
-    // request as unauthenticated instead of failing with a 500.
-  }
-  if (!userId) {
+
+// Supabase Auth: verify the user's access token by asking the Supabase Auth
+// API who owns it. No secret key is needed for this read-only check.
+const authenticated: RequestHandler = async (req, res, next) => {
+  const match = (req.get("authorization") ?? "").match(/^Bearer\s+(.+)$/i);
+  const token = match?.[1];
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const publishableKey = process.env.SUPABASE_PUBLISHABLE_KEY;
+
+  if (!token || !supabaseUrl || !publishableKey) {
     res.status(401).json({ error: "Sign in to manage your AI router." });
     return;
   }
-  res.locals.userId = userId;
-  next();
+
+  try {
+    const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
+      headers: {
+        apikey: publishableKey,
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    if (!response.ok) {
+      res.status(401).json({ error: "Sign in to manage your AI router." });
+      return;
+    }
+    const user = (await response.json()) as { id?: string };
+    if (!user.id) {
+      res.status(401).json({ error: "Sign in to manage your AI router." });
+      return;
+    }
+    res.locals.userId = user.id;
+    next();
+  } catch {
+    res.status(401).json({ error: "Sign in to manage your AI router." });
+  }
 };
 
 function currentUserId(res: Parameters<RequestHandler>[1]): string {
